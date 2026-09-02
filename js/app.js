@@ -49,12 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (field) field.value = draft[key];
     });
     checkOtherDeptVisibility();
+    checkOtherRelationshipVisibility();
     updateProgress();
   }
 });
 
 // ==========================================
-// "OTHER" DEPARTMENT LOGIC
+// "OTHER" DEPARTMENT & RELATIONSHIP LOGIC
 // ==========================================
 const deptSelect = document.getElementById('referrerDepartment');
 const otherDeptGroup = document.getElementById('otherDeptGroup');
@@ -72,6 +73,23 @@ function checkOtherDeptVisibility() {
   }
 }
 deptSelect.addEventListener('change', checkOtherDeptVisibility);
+
+const relationshipSelect = document.getElementById('relationship');
+const otherRelationshipGroup = document.getElementById('otherRelationshipGroup');
+const otherRelationshipInput = document.getElementById('otherRelationship');
+
+function checkOtherRelationshipVisibility() {
+  if (relationshipSelect.value === 'Other') {
+    otherRelationshipGroup.classList.add('show');
+    otherRelationshipInput.setAttribute('required', 'true');
+  } else {
+    otherRelationshipGroup.classList.remove('show');
+    otherRelationshipInput.removeAttribute('required');
+    otherRelationshipInput.value = '';
+    otherRelationshipGroup.classList.remove('invalid');
+  }
+}
+relationshipSelect.addEventListener('change', checkOtherRelationshipVisibility);
 
 // ==========================================
 // INTERACTIVE INPUT MASKING (PHONE)
@@ -161,7 +179,9 @@ function validateField(input) {
 
   if (!isValid) {
     group.classList.add('invalid');
-    if (customError) group.querySelector('.error-msg').textContent = customError;
+    if (customError && group.querySelector('.error-msg')) {
+      group.querySelector('.error-msg').textContent = customError;
+    }
   } else {
     group.classList.remove('invalid');
   }
@@ -178,7 +198,8 @@ function validateStep(stepId) {
   let isStepValid = true;
 
   inputs.forEach(input => {
-    if (input.closest('.form-group').classList.contains('hidden-dept') && !input.hasAttribute('required')) return;
+    const group = input.closest('.form-group');
+    if (group && group.classList.contains('hidden-dept') && !group.classList.contains('show')) return;
     if (!validateField(input)) isStepValid = false;
   });
 
@@ -257,7 +278,13 @@ notesArea.addEventListener('input', () => { charCount.textContent = notesArea.va
 
 function updateProgress() {
   const allRequired = Array.from(document.querySelectorAll('#referralForm [required]'));
-  const activeRequired = allRequired.filter(input => input.hasAttribute('required'));
+  const activeRequired = allRequired.filter(input => {
+    const group = input.closest('.form-group');
+    if (group && group.classList.contains('hidden-dept') && !group.classList.contains('show')) {
+      return false;
+    }
+    return input.hasAttribute('required');
+  });
   
   let filled = 0;
   activeRequired.forEach(input => {
@@ -265,7 +292,7 @@ function updateProgress() {
     else if (input.type !== 'file' && input.value.trim() !== '') filled++;
   });
   
-  const percent = (filled / activeRequired.length) * 100;
+  const percent = activeRequired.length > 0 ? (filled / activeRequired.length) * 100 : 0;
   document.getElementById('progressBar').style.width = `${percent}%`;
 }
 
@@ -292,6 +319,7 @@ form.addEventListener('submit', async (e) => {
   statusDiv.className = 'status-box hidden';
 
   const finalDept = deptSelect.value === 'Other' ? otherDeptInput.value.trim() : deptSelect.value;
+  const finalRelationship = relationshipSelect.value === 'Other' ? otherRelationshipInput.value.trim() : relationshipSelect.value;
   const rawPhone = phoneInput.value.replace(/\s/g, '');
   const file = fileInput.files[0];
   
@@ -305,7 +333,7 @@ form.addEventListener('submit', async (e) => {
       candidatePhone: rawPhone,
       candidatePortfolio: form.candidatePortfolio.value.trim() || 'N/A',
       targetRole: form.targetRole.value.trim(),
-      relationship: form.relationship.value,
+      relationship: finalRelationship,
       notes: form.notes.value.trim() || 'None provided',
       hasFile: !!fileData,
       fileName: fileNameStr,
@@ -328,15 +356,23 @@ form.addEventListener('submit', async (e) => {
       form.reset();
       clearFile();
       checkOtherDeptVisibility();
+      checkOtherRelationshipVisibility();
       charCount.textContent = '0';
       document.getElementById('progressBar').style.width = '0%';
-      setTimeout(() => transitionStep('step3', 'step1'), 2000);
+      
+      // Fix: Reset step index back to 0 so subsequent form submissions work seamlessly
+      currentStepIndex = 0;
+      
+      setTimeout(() => {
+        transitionStep('step3', 'step1');
+        submitBtn.disabled = false;
+      }, 2000);
 
     } catch (err) {
       statusDiv.textContent = 'Network error. Unable to complete submission at this time.';
       statusDiv.className = 'status-box error';
-    } finally {
       submitBtn.disabled = false;
+    } finally {
       spinner.classList.add('hidden');
     }
   };
